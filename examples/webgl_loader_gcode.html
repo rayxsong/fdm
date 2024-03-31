@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - loaders - GCode loader</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="main.css">
+	</head>
+
+	<body>
+		<!-- <div id="info">
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - GCode loader
+		</div> -->
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three';
+
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { GCodeLoader } from 'three/addons/loaders/GCodeLoader.js';
+
+			let camera, scene, renderer, currentHoverLayer;
+
+			const raycaster = new THREE.Raycaster();
+			const mouse = new THREE.Vector2();
+
+			
+			init();
+			render();
+			animate();
+			
+			window.addEventListener('mousemove', onMouseMove, false);
+
+			function onMouseMove(event) {
+				event.preventDefault();
+				
+				mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+				mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+			}
+			
+			
+			function init() {
+
+				camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 1, 1000);
+				camera.position.set( 0, 0, 70 );
+
+				scene = new THREE.Scene();
+
+				const loader = new GCodeLoader();
+				loader.load( 'models/gcode/benchy.gcode', function ( object ) {
+
+					object.position.set( - 100, - 20, 100 );
+					scene.add( object );
+
+					console.log('GCode model loaded', object);
+
+					// const layer10 = object.getObjectByName('layer80');
+					// if (layer10) {
+					// 	console.log('Found layer 10', layer10);
+					// 	highlightLayer(scene, 'layer80');
+					// 	showOnlyLayer(scene, 'layer10');
+					// }
+
+					render();
+
+				} );
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+
+				const controls = new OrbitControls( camera, renderer.domElement );
+				controls.addEventListener( 'change', render ); // use if there is no animation loop
+				controls.minDistance = 10;
+				controls.maxDistance = 100;
+
+				window.addEventListener( 'resize', resize );
+
+			}
+
+			function resize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+				render();
+
+			}
+
+			function animate() {
+				requestAnimationFrame(animate);
+
+				// Update the raycaster based on the camera and mouse position
+				performRaycasting();
+
+				renderer.render(scene, camera);
+			}
+
+			const originalMaterials = {};
+
+			function highlightLayer(parentObject, layerName) {
+				parentObject.traverse((child) => {
+					if (child.name === layerName && child.material) {
+						if (!originalMaterials[layerName]) {
+							// Store the original material only if it hasn't been stored yet
+							originalMaterials[layerName] = child.material;
+						}
+						const newMaterial = child.material.clone();
+						newMaterial.color.setHex(0xffffff); // Highlight color: white
+						child.material = newMaterial;
+					}
+				});
+			}
+
+			function resetLayerColor(parentObject, layerName) {
+				if (originalMaterials[layerName]) {
+					parentObject.traverse((child) => {
+						if (child.name === layerName && child.material) {
+							// Reset the material to the original
+							child.material = originalMaterials[layerName];
+						}
+					});
+				}
+			}
+
+
+			function showOnlyLayer(parentObject, layerName) {
+				parentObject.traverse((child) => {
+					// Check if the child is a layer that should be shown or hidden
+					if (child.name === layerName) {
+						child.visible = true; // Show only the matching layer
+					} else {
+						// Check if this child is another layer to ensure we're not hiding non-layer objects
+						if (child.name.startsWith('layer')) {
+							child.visible = false; // Hide all other layers
+						}
+					}
+				});
+			}
+
+			function performRaycasting() {
+				raycaster.setFromCamera(mouse, camera);
+				const intersects = raycaster.intersectObjects(scene.children, true);
+
+				if (intersects.length > 0) {
+					const intersectedLayerName = intersects[0].object.name; // Determine layer name
+					
+					if (currentHoverLayer !== intersectedLayerName) {
+						// Reset previous layer if it's different from the current
+						if (currentHoverLayer) {
+							resetLayerColor(scene, currentHoverLayer);
+						}
+						highlightLayer(scene, intersectedLayerName);
+						currentHoverLayer = intersectedLayerName;
+					}
+				} else if (currentHoverLayer) {
+					// If nothing is intersected, reset the last hovered layer
+					resetLayerColor(scene, currentHoverLayer);
+					currentHoverLayer = null;
+				}
+			}
+
+
+			function render() {
+
+				renderer.render( scene, camera );
+
+			}
+
+
+		</script>
+
+	<!-- Code injected by live-server -->
+<script>
+	// <![CDATA[  <-- For SVG support
+	if ('WebSocket' in window) {
+		(function () {
+			function refreshCSS() {
+				var sheets = [].slice.call(document.getElementsByTagName("link"));
+				var head = document.getElementsByTagName("head")[0];
+				for (var i = 0; i < sheets.length; ++i) {
+					var elem = sheets[i];
+					var parent = elem.parentElement || head;
+					parent.removeChild(elem);
+					var rel = elem.rel;
+					if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
+						var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
+						elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
+					}
+					parent.appendChild(elem);
+				}
+			}
+			var protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
+			var address = protocol + window.location.host + window.location.pathname + '/ws';
+			var socket = new WebSocket(address);
+			socket.onmessage = function (msg) {
+				if (msg.data == 'reload') window.location.reload();
+				else if (msg.data == 'refreshcss') refreshCSS();
+			};
+			if (sessionStorage && !sessionStorage.getItem('IsThisFirstTime_Log_From_LiveServer')) {
+				console.log('Live reload enabled.');
+				sessionStorage.setItem('IsThisFirstTime_Log_From_LiveServer', true);
+			}
+		})();
+	}
+	else {
+		console.error('Upgrade your browser. This Browser is NOT supported WebSocket for Live-Reloading.');
+	}
+	// ]]>
+</script>
+</body>
+</html>
