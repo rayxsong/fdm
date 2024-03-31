@@ -1,427 +1,224 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
+		<title>three.js webgl - loaders - GCode loader</title>
 		<meta charset="utf-8">
-		<title>three.js examples</title>
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<link rel="shortcut icon" href="../files/favicon_white.ico" media="(prefers-color-scheme: dark)"/>
-		<link rel="shortcut icon" href="../files/favicon.ico" media="(prefers-color-scheme: light)" />
-		<link rel="stylesheet" type="text/css" href="../files/main.css">
+		<link type="text/css" rel="stylesheet" href="main.css">
 	</head>
+
 	<body>
+		<!-- <div id="info">
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - GCode loader
+		</div> -->
 
-		<div id="panel">
-
-			<div id="header">
-				<h1><a href="https://threejs.org">three.js</a></h1>
-
-				<div id="sections">
-					<a href="../docs/index.html#manual/introduction/Creating-a-scene">docs</a>
-					<span class="selected">examples</span>
-				</div>
-
-				<div id="expandButton"></div>
-			</div>
-
-			<div id="panelScrim"></div>
-
-			<div id="contentWrapper">
-
-				<div id="inputWrapper">
-					<input placeholder="" type="text" id="filterInput" autocorrect="off" autocapitalize="off" spellcheck="false" />
-					<div id="clearSearchButton"></div>
-				</div>
-
-				<div id="content">
-					<img id="previewsToggler" src="./files/thumbnails.svg" width="20" height="20" />
-				</div>
-			</div>
-
-		</div>
-
-		<iframe id="viewer" name="viewer" allow="fullscreen; xr-spatial-tracking;"></iframe>
-
-		<a id="button" target="_blank"><img src="../files/ic_code_black_24dp.svg"></a>
-
-		<script>
-
-		const panel = document.getElementById( 'panel' );
-		const content = document.getElementById( 'content' );
-		const viewer = document.getElementById( 'viewer' );
-		const filterInput = document.getElementById( 'filterInput' );
-		const clearSearchButton = document.getElementById( 'clearSearchButton' );
-		const expandButton = document.getElementById( 'expandButton' );
-		const viewSrcButton = document.getElementById( 'button' );
-		const panelScrim = document.getElementById( 'panelScrim' );
-		const previewsToggler = document.getElementById( 'previewsToggler' );
-
-		const sectionLink = document.querySelector( '#sections > a' );
-		const sectionDefaultHref = sectionLink.href;
-
-		const links = {};
-		const validRedirects = new Map();
-		const container = document.createElement( 'div' );
-
-		let selected = null;
-
-		init();
-
-		async function init() {
-
-			content.appendChild( container );
-
-			viewSrcButton.style.display = 'none';
-
-			const files = await ( await fetch( 'files.json' ) ).json();
-			const tags = await ( await fetch( 'tags.json' ) ).json();
-
-			for ( const key in files ) {
-
-				const category = files[ key ];
-
-				const header = document.createElement( 'h2' );
-				header.textContent = key;
-				header.setAttribute( 'data-category', key );
-				container.appendChild( header );
-
-				for ( let i = 0; i < category.length; i ++ ) {
-
-					const file = category[ i ];
-
-					const link = createLink( file, tags[ file ] );
-					container.appendChild( link );
-
-					links[ file ] = link;
-					validRedirects.set( file, file + '.html' );
-
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
 				}
-
 			}
+		</script>
 
-			if ( window.location.hash !== '' ) {
+		<script type="module">
 
-				const file = window.location.hash.substring( 1 );
+			import * as THREE from 'three';
 
-				// use a predefined map of redirects to avoid untrusted URL redirection due to user-provided value
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { GCodeLoader } from 'three/addons/loaders/GCodeLoader.js';
 
-				if ( validRedirects.has( file ) === true ) {
+			let camera, scene, renderer, currentHoverLayer;
 
-					selectFile( file );
-					viewer.src = validRedirects.get( file );
-					viewer.style.display = 'unset';
+			const raycaster = new THREE.Raycaster();
+			const mouse = new THREE.Vector2();
 
-				}
+			
+			init();
+			render();
+			animate();
+			
+			window.addEventListener('mousemove', onMouseMove, false);
 
-			}
-
-			if ( viewer.src === '' ) {
-
-				viewer.srcdoc = document.getElementById( 'PlaceholderHTML' ).innerHTML;
-				viewer.style.display = 'unset';
-
-			}
-
-			filterInput.value = extractQuery();
-
-			if ( filterInput.value !== '' ) {
-
-				panel.classList.add( 'searchFocused' );
-
-				updateFilter( files, tags );
-
-			} else {
-
-				updateLink( '' );
-
-			}
-
-			// Events
-
-			filterInput.onfocus = function ( ) {
-
-				panel.classList.add( 'searchFocused' );
-
-			};
-
-			filterInput.onblur = function ( ) {
-
-				if ( filterInput.value === '' ) {
-
-					panel.classList.remove( 'searchFocused' );
-
-				}
-
-			};
-
-			clearSearchButton.onclick = function ( ) {
-
-				filterInput.value = '';
-				updateFilter( files, tags );
-				filterInput.focus();
-
-			};
-
-			filterInput.addEventListener( 'input', function () {
-
-				updateFilter( files, tags );
-
-			} );
-
-
-			expandButton.addEventListener( 'click', function ( event ) {
-
+			function onMouseMove(event) {
 				event.preventDefault();
-				panel.classList.toggle( 'open' );
+				
+				mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+				mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+			}
+			
+			
+			function init() {
 
-			} );
+				camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 1, 1000);
+				camera.position.set( 0, 0, 70 );
 
-			panelScrim.onclick = function ( event ) {
+				scene = new THREE.Scene();
 
-				event.preventDefault();
-				panel.classList.toggle( 'open' );
+				const loader = new GCodeLoader();
+				loader.load( 'models/gcode/benchy.gcode', function ( object ) {
 
-			};
+					object.position.set( - 100, - 20, 100 );
+					scene.add( object );
 
-			previewsToggler.onclick = function ( event ) {
+					console.log('GCode model loaded', object);
 
-				event.preventDefault();
-				content.classList.toggle( 'minimal' );
+					// const layer10 = object.getObjectByName('layer80');
+					// if (layer10) {
+					// 	console.log('Found layer 10', layer10);
+					// 	highlightLayer(scene, 'layer80');
+					// 	showOnlyLayer(scene, 'layer10');
+					// }
 
-			};
+					render();
 
-			// iOS iframe auto-resize workaround
+				} );
 
-			if ( /(iPad|iPhone|iPod)/g.test( navigator.userAgent ) ) {
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
 
-				viewer.style.width = getComputedStyle( viewer ).width;
-				viewer.style.height = getComputedStyle( viewer ).height;
-				viewer.setAttribute( 'scrolling', 'no' );
+				const controls = new OrbitControls( camera, renderer.domElement );
+				controls.addEventListener( 'change', render ); // use if there is no animation loop
+				controls.minDistance = 10;
+				controls.maxDistance = 100;
+
+				window.addEventListener( 'resize', resize );
 
 			}
 
-		}
+			function resize() {
 
-		function createLink( file, tags ) {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
 
-			const external = Array.isArray( tags ) && tags.includes( 'external' ) ? ' <span class="tag">external</span>' : '';
+				renderer.setSize( window.innerWidth, window.innerHeight );
 
-			const template = `
-				<div class="card">
-					<a href="${ file }.html" target="viewer">
-						<div class="cover">
-							<img src="screenshots/${ file }.jpg" loading="lazy" width="400" />
-						</div>
-						<div class="title">${ getName( file ) }${ external }</div>
-					</a>
-				</div>
-			`;
-
-			const link = createElementFromHTML( template );
-
-			link.querySelector( 'a[target="viewer"]' ).addEventListener( 'click', function ( event ) {
-
-				if ( event.button !== 0 || event.ctrlKey || event.altKey || event.metaKey ) return;
-
-				selectFile( file );
-
-			} );
-
-			return link;
-
-		}
-
-		function selectFile( file ) {
-
-			if ( selected !== null ) links[ selected ].classList.remove( 'selected' );
-
-			links[ file ].classList.add( 'selected' );
-
-			window.location.hash = file;
-			viewer.focus();
-			viewer.style.display = 'unset';
-
-			panel.classList.remove( 'open' );
-
-			selected = file;
-
-			// Reveal "View source" button and set attributes to this example
-			viewSrcButton.style.display = '';
-			viewSrcButton.href = 'https://github.com/mrdoob/three.js/blob/master/examples/' + selected + '.html';
-			viewSrcButton.title = 'View source code for ' + getName( selected ) + ' on GitHub';
-
-		}
-
-		function escapeRegExp( string ) {
-
-			string = string.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' ); // https://stackoverflow.com/a/6969486/5250847
-
-			return '(?=.*' + string.split( ' ' ).join( ')(?=.*' ) + ')'; // match all words, in any order
-
-		}
-
-		function updateFilter( files, tags ) {
-
-			let v = filterInput.value.trim();
-			v = v.replace( /\s+/gi, ' ' ); // replace multiple whitespaces with a single one
-
-			if ( v !== '' ) {
-
-				window.history.replaceState( {}, '', '?q=' + v + window.location.hash );
-
-			} else {
-
-				window.history.replaceState( {}, '', window.location.pathname + window.location.hash );
+				render();
 
 			}
 
-			const exp = new RegExp( escapeRegExp( v ), 'gi' );
+			function animate() {
+				requestAnimationFrame(animate);
 
-			for ( const key in files ) {
+				// Update the raycaster based on the camera and mouse position
+				performRaycasting();
 
-				const section = files[ key ];
-
-				for ( let i = 0; i < section.length; i ++ ) {
-
-					filterExample( section[ i ], exp, tags );
-
-				}
-
+				renderer.render(scene, camera);
 			}
 
-			layoutList( files );
+			const originalMaterials = {};
 
-			updateLink( v );
-
-		}
-
-		function updateLink( search ) {
-
-			// update docs link
-
-			if ( search ) {
-
-				const link = sectionLink.href.split( /[?#]/ )[ 0 ];
-				sectionLink.href = `${link}?q=${search}`;
-
-			} else {
-
-				sectionLink.href = sectionDefaultHref;
-
-			}
-
-		}
-
-		function filterExample( file, exp, tags ) {
-
-			const link = links[ file ];
-			if ( file in tags ) file += ' ' + tags[ file ].join( ' ' );
-			const res = file.replace( /_+/g, ' ' ).match( exp );
-
-			if ( res && res.length > 0 ) {
-
-				link.classList.remove( 'hidden' );
-
-			} else {
-
-				link.classList.add( 'hidden' );
-
-			}
-
-		}
-
-		function getName( file ) {
-
-			const name = file.split( '_' );
-			name.shift();
-			return name.join( ' / ' );
-
-		}
-
-		function layoutList( files ) {
-
-			for ( const key in files ) {
-
-				let collapsed = true;
-
-				const section = files[ key ];
-
-				for ( let i = 0; i < section.length; i ++ ) {
-
-					const file = section[ i ];
-
-					if ( links[ file ].classList.contains( 'hidden' ) === false ) {
-
-						collapsed = false;
-						break;
-
+			function highlightLayer(parentObject, layerName) {
+				parentObject.traverse((child) => {
+					if (child.name === layerName && child.material) {
+						if (!originalMaterials[layerName]) {
+							// Store the original material only if it hasn't been stored yet
+							originalMaterials[layerName] = child.material;
+						}
+						const newMaterial = child.material.clone();
+						newMaterial.color.setHex(0xffffff); // Highlight color: white
+						child.material = newMaterial;
 					}
+				});
+			}
 
+			function resetLayerColor(parentObject, layerName) {
+				if (originalMaterials[layerName]) {
+					parentObject.traverse((child) => {
+						if (child.name === layerName && child.material) {
+							// Reset the material to the original
+							child.material = originalMaterials[layerName];
+						}
+					});
 				}
+			}
 
-				const element = document.querySelector( 'h2[data-category="' + key + '"]' );
 
-				if ( collapsed ) {
+			function showOnlyLayer(parentObject, layerName) {
+				parentObject.traverse((child) => {
+					// Check if the child is a layer that should be shown or hidden
+					if (child.name === layerName) {
+						child.visible = true; // Show only the matching layer
+					} else {
+						// Check if this child is another layer to ensure we're not hiding non-layer objects
+						if (child.name.startsWith('layer')) {
+							child.visible = false; // Hide all other layers
+						}
+					}
+				});
+			}
 
-					element.classList.add( 'hidden' );
+			function performRaycasting() {
+				raycaster.setFromCamera(mouse, camera);
+				const intersects = raycaster.intersectObjects(scene.children, true);
 
-				} else {
-
-					element.classList.remove( 'hidden' );
-
+				if (intersects.length > 0) {
+					const intersectedLayerName = intersects[0].object.name; // Determine layer name
+					
+					if (currentHoverLayer !== intersectedLayerName) {
+						// Reset previous layer if it's different from the current
+						if (currentHoverLayer) {
+							resetLayerColor(scene, currentHoverLayer);
+						}
+						highlightLayer(scene, intersectedLayerName);
+						currentHoverLayer = intersectedLayerName;
+					}
+				} else if (currentHoverLayer) {
+					// If nothing is intersected, reset the last hovered layer
+					resetLayerColor(scene, currentHoverLayer);
+					currentHoverLayer = null;
 				}
+			}
+
+
+			function render() {
+
+				renderer.render( scene, camera );
 
 			}
 
-		}
-
-		function extractQuery() {
-
-			const search = window.location.search;
-
-			if ( search.indexOf( '?q=' ) !== - 1 ) {
-
-				return decodeURI( search.slice( 3 ) );
-
-			}
-
-			return '';
-
-		}
-
-		function createElementFromHTML( htmlString ) {
-
-			const div = document.createElement( 'div' );
-			div.innerHTML = htmlString.trim();
-			return div.firstChild;
-
-		}
 
 		</script>
-		<template id="PlaceholderHTML">
-			<!DOCTYPE html>
-				<html lang="en">
-					<head>
-						<meta charset="utf-8">
-						<title>three.js examples</title>
-						<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-						<link rel="stylesheet" type="text/css" href="../files/main.css">
-						<style>
-						html, body {
-							height: 100%;
-						}
-						body {
-							height: 100%;
-							display: flex;
-							align-items: center;
-							justify-content: center;
-							user-select: none;
-						}
-						</style>
-					</head>
-					<body>
-						Select an example from the sidebar
-					</body>
-				</html>
-		</template>
-	</body>
+
+	<!-- Code injected by live-server -->
+<script>
+	// <![CDATA[  <-- For SVG support
+	if ('WebSocket' in window) {
+		(function () {
+			function refreshCSS() {
+				var sheets = [].slice.call(document.getElementsByTagName("link"));
+				var head = document.getElementsByTagName("head")[0];
+				for (var i = 0; i < sheets.length; ++i) {
+					var elem = sheets[i];
+					var parent = elem.parentElement || head;
+					parent.removeChild(elem);
+					var rel = elem.rel;
+					if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
+						var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
+						elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
+					}
+					parent.appendChild(elem);
+				}
+			}
+			var protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
+			var address = protocol + window.location.host + window.location.pathname + '/ws';
+			var socket = new WebSocket(address);
+			socket.onmessage = function (msg) {
+				if (msg.data == 'reload') window.location.reload();
+				else if (msg.data == 'refreshcss') refreshCSS();
+			};
+			if (sessionStorage && !sessionStorage.getItem('IsThisFirstTime_Log_From_LiveServer')) {
+				console.log('Live reload enabled.');
+				sessionStorage.setItem('IsThisFirstTime_Log_From_LiveServer', true);
+			}
+		})();
+	}
+	else {
+		console.error('Upgrade your browser. This Browser is NOT supported WebSocket for Live-Reloading.');
+	}
+	// ]]>
+</script>
+</body>
 </html>
