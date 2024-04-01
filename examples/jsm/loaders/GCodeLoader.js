@@ -8,8 +8,6 @@ import {
 	Loader
 } from 'three';
 
-import * as THREE from 'three';
-
 /**
  * GCodeLoader is used to load gcode files usually used for 3D printing or CNC applications.
  *
@@ -29,6 +27,7 @@ class GCodeLoader extends Loader {
 		this.debug = true;
 		this.ifPath = false;
 		this.ifExtrude = true;
+		this.ifWall = true;
 
 	}
 

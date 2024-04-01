@@ -12,6 +12,10 @@
 			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - GCode loader
 		</div> -->
 
+		<div id="overlay" style="position: absolute; color: white; font-weight: bold; padding: 4px; background: rgba(0, 0, 0, 0.5); border-radius: 4px; display: inline-block; white-space: nowrap; font-size: 14px;">
+			Layer: <span id="layerNumber">0</span>
+		</div>			
+
 		<script type="importmap">
 			{
 				"imports": {
@@ -28,25 +32,113 @@
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GCodeLoader } from 'three/addons/loaders/GCodeLoader.js';
 
-			let camera, scene, renderer, currentHoverLayer;
+			let camera, scene, renderer, currentHoverLayer, loadedObject, clickedLayer;
 
 			const raycaster = new THREE.Raycaster();
 			const mouse = new THREE.Vector2();
 
 			
 			init();
-			render();
+			// render();
 			animate();
 			
 			window.addEventListener('mousemove', onMouseMove, false);
+			// window.addEventListener('click', onClick, false);
+
+			window.addEventListener('contextmenu', function(event) {
+				event.preventDefault(); // Prevent the default right-click context menu
+
+				// Use raycaster to check if the right-click is on empty space
+				raycaster.setFromCamera(mouse, camera);
+				const intersects = raycaster.intersectObjects(scene.children, true);
+
+				if (intersects.length === 0 || !intersects[0].object.name.startsWith('layer')) {
+					// Show all layers again if the right-click is not on a layer
+					scene.traverse((child) => {
+						if (child.name.startsWith('layer')) {
+							child.visible = true;
+						}
+					});
+					clickedLayer = null; // Reset the clicked layer variable
+				}
+			}, false);
+
+			window.addEventListener('click', function(event) {
+				// Preventing the event from interfering with the right-click logic
+				event.preventDefault();
+
+				// Similar raycasting logic to determine if a layer is clicked
+				raycaster.setFromCamera(mouse, camera);
+				const intersects = raycaster.intersectObjects(scene.children, true);
+
+				if (intersects.length > 0 && intersects[0].object.name.startsWith('layer')) {
+					const intersectedObject = intersects[0].object;
+					// Hide all other layers except the clicked one
+					scene.traverse((child) => {
+						if (child.name.startsWith('layer') && child !== intersectedObject) {
+							child.visible = false;
+						}
+					});
+					clickedLayer = intersectedObject; // Store the clicked layer
+				}
+			}, false);
 
 			function onMouseMove(event) {
 				event.preventDefault();
 				
 				mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
 				mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+				raycaster.setFromCamera(mouse, camera);
+				const intersects = raycaster.intersectObjects(scene.children, true);
+
+				const overlay = document.getElementById('overlay');
+				if (intersects.length > 0) {
+					const intersectedObject = intersects[0].object;
+
+					// Assuming each layer object has a name property in 'layerX' format
+					const layerName = intersectedObject.name;
+					if (layerName.startsWith('layer')) {
+						document.getElementById('layerNumber').textContent = layerName.replace('layer', ''); // Assuming layer naming convention is 'layerX'
+						overlay.style.display = 'block';
+						overlay.style.left = (event.clientX + 10) + 'px'; // Offset by 10px to avoid cursor overlap
+						overlay.style.top = (event.clientY + 10) + 'px';
+					}
+				} else {
+					overlay.style.display = 'none';
+				}
 			}
-			
+
+			// function onClick(event) {
+			// 	// Reuse the raycaster setup from the mouse hover feature
+			// 	raycaster.setFromCamera(mouse, camera);
+			// 	const intersects = raycaster.intersectObjects(scene.children, true);
+
+			// 	if (intersects.length > 0) {
+			// 		const intersectedObject = intersects[0].object;
+
+			// 		if (intersectedObject.name.startsWith('layer')) {
+			// 			// Hide all other layers except the clicked one
+			// 			scene.traverse((child) => {
+			// 				if (child.name.startsWith('layer') && child !== intersectedObject) {
+			// 					child.visible = false;
+			// 				}
+			// 			});
+			// 			clickedLayer = intersectedObject; // Store the clicked layer
+			// 		}
+			// 	} else {
+			// 		// If clicked on empty space and there was a previously clicked layer
+			// 		if (clickedLayer) {
+			// 			// Show all layers again
+			// 			scene.traverse((child) => {
+			// 				if (child.name.startsWith('layer')) {
+			// 					child.visible = true;
+			// 				}
+			// 			});
+			// 			clickedLayer = null; // Reset the clicked layer
+			// 		}
+			// 	}
+			// }
 			
 			function init() {
 				camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
@@ -55,14 +147,17 @@
 				scene = new THREE.Scene();
 
 				const loader = new GCodeLoader();
-				loader.load('models/gcode/benchy.gcode', function (object) {
+				// loader.load('models/gcode/bub.gcode', function (object) {
+				loader.load('models/gcode/benchy_wall.gcode', function (object) {
 
 					object.position.set(-100, -20, 100);
+					
 					scene.add(object);
 
-					console.log('GCode model loaded', object);
+					loadedObject = object;
 
-					render();
+					console.log('GCode model loaded', object);
+					// render();
 				});
 
 				// Check for WebGL 2 support and create a WebGL 2 context for the renderer
@@ -103,6 +198,11 @@
 
 				// Update the raycaster based on the camera and mouse position
 				performRaycasting();
+
+				if (loadedObject) {
+					// loadedObject.rotation.z += 0.001; // Adjust rotation speed as needed
+					// object.geometry.center();
+				}
 
 				renderer.render(scene, camera);
 			}
@@ -173,7 +273,6 @@
 
 
 			function render() {
-
 				renderer.render( scene, camera );
 
 			}
