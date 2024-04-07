@@ -25,9 +25,10 @@ class GCodeLoader extends Loader {
 
 		this.splitLayer = true;
 		this.debug = true;
-		this.ifPath = false;
-		this.ifExtrude = true;
-		this.ifWall = true;
+		this.isPath = false;
+		this.isExtrude = true;
+		this.isWall = true;
+		this.isSkip = true;
 
 	}
 
@@ -69,7 +70,7 @@ class GCodeLoader extends Loader {
 
 		let state = { x: 0, y: 0, z: 0, e: 0, f: 0, extruding: false, relative: false };
 		const layers = [];
-		let layer_count = 0;
+		let skip = false;
 
 		let currentLayer = undefined;
 
@@ -95,7 +96,7 @@ class GCodeLoader extends Loader {
 
 			}
 
-			if ( state.extruding ) {
+			if ( state.extruding && !skip ) {
 
 				currentLayer.vertex.push( p1.x, p1.y, p1.z );
 				currentLayer.vertex.push( p2.x, p2.y, p2.z );
@@ -121,12 +122,25 @@ class GCodeLoader extends Loader {
 
 		}
 
-		const lines = data.replace( /;.+/g, '' ).split( '\n' );
+		// const lines = data.replace( /;.+/g, '' ).split( '\n' );
+		const lines = data.split('\n');
 
 		for ( let i = 0; i < lines.length; i ++ ) {
 
-			const tokens = lines[ i ].split( ' ' );
-			const cmd = tokens[ 0 ].toUpperCase();
+			const line = lines[i].trim();
+			const tokens = line.split(' ');
+			const cmd = tokens[0].toUpperCase();
+
+			if (this.isSkip) {
+				if ( cmd.slice(6) === 'FILL' || cmd.slice(6) === 'WALL-INNER' || cmd.slice(6) === 'SKIN') {
+					// skip infill
+					// console.log( 'skip' );
+					skip = true;
+				} else if ( cmd.slice(0 , 5) === ';TYPE') {
+					skip = false;
+				}
+			}
+
 
 			//Argumments
 			const args = {};
@@ -221,7 +235,7 @@ class GCodeLoader extends Loader {
 		if ( this.splitLayer ) {
 
 			for ( let i = 0; i < layers.length; i ++ ) {
-				if ( !this.ifPath ) {
+				if ( !this.isPath ) {
 					const layer = layers[ i ];
 					addObject( layer.vertex, true, i );
 					console.log( 'layer' + i );
