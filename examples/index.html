@@ -24,6 +24,7 @@
 				}
 			}
 		</script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
 
 		<script type="module">
 
@@ -32,11 +33,12 @@
 			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 			import { GCodeLoader } from 'three/addons/loaders/GCodeLoader.js';
 
-			let camera, scene, renderer, currentHoverLayer, loadedObject, clickedLayer;
+			let camera, scene, renderer, controls, currentHoverLayer, loadedObject, clickedLayer;
+			let isInTopDownView = false;
+			let camOriginalPos, camOriginalRot;
 
 			const raycaster = new THREE.Raycaster();
 			const mouse = new THREE.Vector2();
-
 			
 			init();
 			// render();
@@ -60,27 +62,53 @@
 						}
 					});
 					clickedLayer = null; // Reset the clicked layer variable
+
+					// Reset the camera to its original position and orientation
+					resetCamera();
+
+					// Re-enable orbit controls
+					controls.enabled = true;
+
+					// Hide the code editor
+					showCodeEditor(false);
 				}
 			}, false);
 
 			window.addEventListener('click', function(event) {
 				// Preventing the event from interfering with the right-click logic
 				event.preventDefault();
-
-				// Similar raycasting logic to determine if a layer is clicked
-				raycaster.setFromCamera(mouse, camera);
-				const intersects = raycaster.intersectObjects(scene.children, true);
-
-				if (intersects.length > 0 && intersects[0].object.name.startsWith('layer')) {
-					const intersectedObject = intersects[0].object;
-					// Hide all other layers except the clicked one
-					scene.traverse((child) => {
-						if (child.name.startsWith('layer') && child !== intersectedObject) {
-							child.visible = false;
-						}
-					});
-					clickedLayer = intersectedObject; // Store the clicked layer
-				}
+				
+				if (!isInTopDownView && event.button === 0) { // event.button === 0 checks for left click
+					// Similar raycasting logic to determine if a layer is clicked
+					raycaster.setFromCamera(mouse, camera);
+					const intersects = raycaster.intersectObjects(scene.children, true);
+	
+					if (intersects.length > 0 && intersects[0].object.name.startsWith('layer')) {
+						const intersectedObject = intersects[0].object;
+						// Hide all other layers except the clicked one
+						scene.traverse((child) => {
+							if (child.name.startsWith('layer') && child !== intersectedObject) {
+								child.visible = false;
+							}
+						});
+						clickedLayer = intersectedObject; // Store the clicked layer
+						console.log('Clicked on layer', clickedLayer);
+	
+						// Change camera to top-down view and center on the clicked layer
+						setTopDownView(intersectedObject);
+	
+						// Disable orbit controls
+						controls.enabled = false;
+	
+						// Show code editor
+						showCodeEditor(true);
+					}  else {
+						// If orbit controls are disabled (top-down view), we do nothing on click
+						// This could be a good place to add any specific logic you want to happen
+						// when a layer is clicked in top-down view, if any.
+						console.log('Top-down view active, click does nothing');
+					}
+    			}
 			}, false);
 
 			function onMouseMove(event) {
@@ -92,8 +120,8 @@
 				raycaster.setFromCamera(mouse, camera);
 				const intersects = raycaster.intersectObjects(scene.children, true);
 
-				const overlay = document.getElementById('overlay');
-				if (intersects.length > 0) {
+				const overlay = document.getElementById('overlay');		
+				if (intersects.length > 0 && !isInTopDownView) {
 					const intersectedObject = intersects[0].object;
 
 					// Assuming each layer object has a name property in 'layerX' format
@@ -108,6 +136,38 @@
 					overlay.style.display = 'none';
 				}
 			}
+
+			// Add a double-click event listener to prevent layer disappearance
+			window.addEventListener('dblclick', function(event) {
+				event.preventDefault(); // Prevent the default double-click behavior
+
+				// Check if a layer is clicked and the orbit controls are disabled (in top-down view)
+				if (!controls.enabled && clickedLayer) {
+					// Ensure the clicked layer remains visible
+					clickedLayer.visible = true;
+				}
+			}, false);
+
+			// Function to set the camera to a top-down view centered on the selected layer
+			function setTopDownView(selectedLayer) {
+				isInTopDownView = true;
+				transitionToTopDownView(selectedLayer);
+			}
+
+			// Function to reset the camera to its original position and orientation
+			function resetCamera() {
+				isInTopDownView = false;
+				camera.position.copy(camOriginalPos);
+				camera.lookAt(scene.position);
+				camera.rotation.copy(camOriginalRot);
+				camera.up.set(0, 1, 0);
+			}
+
+			// Function to show or hide the code editor
+			function showCodeEditor(visible) {
+				const codeEditor = document.getElementById('codeEditor'); // Assuming you have an element with this ID
+				codeEditor.style.display = visible ? 'block' : 'none';
+			}			
 
 			// function onClick(event) {
 			// 	// Reuse the raycaster setup from the mouse hover feature
@@ -147,9 +207,9 @@
 				scene = new THREE.Scene();
 
 				const loader = new GCodeLoader();
-				// loader.load('models/gcode/bub.gcode', function (object) {
+				// loader.load('models/gcode/tentacle.gcode', function (object) {
 				loader.load('models/gcode/benchy.gcode', function (object) {
-				// loader.load('models/gcode/layer11.gcode', function (object) {
+				// loader.load('models/gcode/layer.gcode', function (object) {
 
 					object.position.set(-100, -20, 100);
 					
@@ -157,9 +217,23 @@
 
 					loadedObject = object;
 
+					const bbox = new THREE.Box3().setFromObject(object);
+					const center = bbox.getCenter(new THREE.Vector3());
+					const size = bbox.getSize(new THREE.Vector3());
+					const distance = size.length();
+					const cameraOffset = 1.2; // Adjust based on your needs
+
+					camera.position.set(center.x, center.y, center.z + distance * cameraOffset);
+					camera.lookAt(center);
+					if (controls) controls.target.set(center.x, center.y, center.z);
+
+					camOriginalPos = camera.position.clone();
+					camOriginalRot = camera.rotation.clone();
+
 					console.log('GCode model loaded', object);
 					// render();
 				});
+
 
 				// Check for WebGL 2 support and create a WebGL 2 context for the renderer
 				const canvas = document.createElement('canvas');
@@ -174,7 +248,7 @@
 				renderer.setSize(window.innerWidth, window.innerHeight);
 				document.body.appendChild(renderer.domElement);
 
-				const controls = new OrbitControls(camera, renderer.domElement);
+				controls = new OrbitControls(camera, renderer.domElement);
 				controls.addEventListener('change', render); // use if there is no animation loop
 				controls.minDistance = 10;
 				controls.maxDistance = 100;
@@ -205,8 +279,61 @@
 					// object.geometry.center();
 				}
 
+				// if (isInTopDownView) {
+				// 	const lerpFactor = 0.05; // Adjust for smoother or faster transition
+				// 	camera.position.lerp(targetPosition, lerpFactor);
+				// 	// camera.quaternion.slerp(targetQuaternion, lerpFactor);
+
+				// 	// Optional: Check if the camera is close enough to the target position to stop the transition
+				// 	if (camera.position.distanceTo(targetPosition) < 0.1 && camera.quaternion.angleTo(targetQuaternion) < 0.01) {
+				// 		isInTopDownView = false; // Stop the transition
+				// 	}
+				// }
+				TWEEN.update();
+
 				renderer.render(scene, camera);
+				
+				// print camera position
+				// console.log(camera.position);
 			}
+
+			function transitionToTopDownView(targetObject) {
+				const bbox = new THREE.Box3().setFromObject(targetObject);
+				const center = bbox.getCenter(new THREE.Vector3());
+
+				// Define starting values for the animation
+				const startPos = camera.position.clone();
+				const startUp = camera.up.clone();
+				const startCenter = camera.position.clone();
+
+				// Define target values for the animation
+				const targetPos = new THREE.Vector3(center.x + 10 , center.y - 60, 0);
+				const targetUp = new THREE.Vector3(0, 1, 0);
+				const targetCenter = center;
+
+				// Use Tween.js to animate the camera position
+				new TWEEN.Tween(startPos)
+					.to(targetPos, 3000) // 2000 ms = 2 seconds for the transition
+					.easing(TWEEN.Easing.Circular.InOut) // This easing function is smooth for camera movements
+					.onUpdate(() => {
+						camera.position.set(startPos.x, startPos.y, startPos.z);
+						// camera.lookAt(center);
+					})
+					.start(); // Start the tween
+
+				// Similarly, animate the camera's up vector if needed
+				new TWEEN.Tween(startUp)
+					.to(targetUp, 3000) // Match the duration with the position tween for synchronized animation
+					.easing(TWEEN.Easing.Linear.None)
+					.onUpdate(() => {
+						camera.up.set(startUp.x, startUp.y, startUp.z);
+						camera.lookAt(center);
+					})
+					.start();
+
+				isInTopDownView = true; // Assuming you have this flag from previous suggestions
+			}
+
 
 			const originalMaterials = {};
 
@@ -251,27 +378,27 @@
 			}
 
 			function performRaycasting() {
-				raycaster.setFromCamera(mouse, camera);
-				const intersects = raycaster.intersectObjects(scene.children, true);
+					// Only perform raycasting if OrbitControls are enabled
+				if (controls.enabled) {
+					raycaster.setFromCamera(mouse, camera);
+					const intersects = raycaster.intersectObjects(scene.children, true);
 
-				if (intersects.length > 0) {
-					const intersectedLayerName = intersects[0].object.name; // Determine layer name
-					
-					if (currentHoverLayer !== intersectedLayerName) {
-						// Reset previous layer if it's different from the current
-						if (currentHoverLayer) {
-							resetLayerColor(scene, currentHoverLayer);
+					if (intersects.length > 0) {
+						const intersectedLayerName = intersects[0].object.name;
+						
+						if (currentHoverLayer !== intersectedLayerName) {
+							if (currentHoverLayer) {
+								resetLayerColor(scene, currentHoverLayer);
+							}
+							highlightLayer(scene, intersectedLayerName);
+							currentHoverLayer = intersectedLayerName;
 						}
-						highlightLayer(scene, intersectedLayerName);
-						currentHoverLayer = intersectedLayerName;
+					} else if (currentHoverLayer) {
+						resetLayerColor(scene, currentHoverLayer);
+						currentHoverLayer = null;
 					}
-				} else if (currentHoverLayer) {
-					// If nothing is intersected, reset the last hovered layer
-					resetLayerColor(scene, currentHoverLayer);
-					currentHoverLayer = null;
 				}
 			}
-
 
 			function render() {
 				renderer.render( scene, camera );

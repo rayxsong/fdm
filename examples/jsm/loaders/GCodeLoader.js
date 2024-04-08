@@ -97,7 +97,7 @@ class GCodeLoader extends Loader {
 			}
 
 			if ( state.extruding && !skip ) {
-
+				console.log( 'extruding' );
 				currentLayer.vertex.push( p1.x, p1.y, p1.z );
 				currentLayer.vertex.push( p2.x, p2.y, p2.z );
 
@@ -132,8 +132,7 @@ class GCodeLoader extends Loader {
 			const cmd = tokens[0].toUpperCase();
 
 			if (this.isSkip) {
-				if ( cmd.slice(6) === 'FILL' || cmd.slice(6) === 'WALL-INNER' || cmd.slice(6) === 'SKIN') {
-					// skip infill
+				if ( cmd.slice(6) === 'FILL' || cmd.slice(6) === 'WALL-OUTER' || cmd.slice(6) === 'SKIN') {
 					// console.log( 'skip' );
 					skip = true;
 				} else if ( cmd.slice(0 , 5) === ';TYPE') {
@@ -238,12 +237,12 @@ class GCodeLoader extends Loader {
 				if ( !this.isPath ) {
 					const layer = layers[ i ];
 					addObject( layer.vertex, true, i );
-					console.log( 'layer' + i );
+					console.log( 'extrusion layer' + i );
 				} else {
 					const layer = layers[ i ];
 					addObject( layer.vertex, true, i );
 					addObject( layer.pathVertex, false, i );
-					console.log( 'layer' + i );
+					console.log( 'path layer' + i );
 				}
 			}
 
